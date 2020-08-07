@@ -16,7 +16,10 @@ The Project is a sample implemention of datatable.js in .net core project. the c
   - lightweight pagination for fast ajax call.
 
 ## How To Start
-### 1-Creating Models
+## Notice 
+From step 1 to step 7 is just a one time job and you do not have to do this in every search page.
+From step 8 to last is the jobs you may do every time for every search.
+### 1-Creating DataTable Models
 First thing first, we need to create a general model to contain all the data needed for creating datatable.
 ```
     public class DatatableModel
@@ -90,7 +93,7 @@ Finally, we add a method to return the created datatable object which will be th
 ```
 The inteface is now completed . moving on to next step.
 ### 3- Adding some customized attributes
-There is some customized attribute which will be needed after for customizing the way a field is shown in table. add these codes in a file in your attribute folders.
+Here is some customized attribute which will be needed after for customizing the way a field is shown in table. add these codes in a file in your attribute folders.
 ```
     public class HideInDataTableAttribute:Attribute
     {        
@@ -198,5 +201,210 @@ The request which is being sent from datatable.js will be converted to an object
         public string Value { get; set; }
     }
 ```
-### 6- 
+### 6- Adding a generic Response body for search response.
+T here is the type of object you are returning form your different search method for different objects.
+```
+    public class DataTableReady<T>
+    {
+        [JsonPropertyName("data")]
+        public List<T> Data { get; set; }
+        [JsonPropertyName("draw")]
+        public int Draw { get; set; }
+        [JsonPropertyName("recordsTotal")]
+        public int RecordsTotal { get; set; }
+        [JsonPropertyName("recordsFiltered")]
+        public int RecordsFiltered { get; set; }
+    }
+```
+### 8- Adding two partial views in SharedFolder.
+the first is Html partial of the datatable and the script is logic of script.
+#### Html Partial
+```
+
+@{
+    Layout = null;
+}
+@model DynamicDataTable.ViewModels.Datatable.DatatableModel
+<table class="table table-bordered " id="productTable">
+        <thead>
+            <tr>
+                @foreach(var item in Model.Headers)
+                {
+                    <th>@item</th>
+                }
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+```
+#### Script Partial:
+```
+@{
+    Layout = null;
+}
+@model DynamicDataTable.ViewModels.Datatable.DatatableModel
+<script>
+    var columns = @(Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.StringColumns)));
+    var targetcount = columns.length-1;
+    var checkboxes = @(Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.CheckBoxes)))
+    $.each(checkboxes, function (index, item) {
+        targetcount++
+        if (item.WhenTrue !== null) {
+            columnDefs.push({
+                targets: targetcount,
+                data: item.Title,
+                render: function (data, type, row, meta) {
+
+                    return `${(data ? item.WhenTrue : item.WhenFalse)}`;
+                }
+            });
+        }
+        else {
+            columnDefs.push({
+                targets: targetcount,
+                data: item.Title,
+                render: function (data, type, row, meta) {
+
+                    var checked = data ? 'checked="checked"' : ""
+                    return `<input ${checked}  type="checkbox">`
+                }
+            });
+        }
+
+        });
+</script>
+<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/bs4/dt-1.10.21/datatables.min.css" />
+<script type="text/javascript" src="https://cdn.datatables.net/v/bs4/dt-1.10.21/datatables.min.js"></script>
+<script>
+    $(function () {
+            var table = $('#productTable').DataTable({
+                "ordering": true,
+                "pageLength": @Model.PageSize,
+                "bLengthChange": false,
+    proccessing: true,
+    serverSide: true,
+
+    ajax: {
+        url:"@Model.SearchEndPoint",
+        type: 'POST'
+                },
+                columns: columns,
+      columnDefs: columnDefs
+});
+        });
+
+</script>
+
+```
+
+### 8- A Sample Search Function with Entity Framework Core.
+This is a sample method and you can change it however you want.
+but remember the response of the method is always of type : DataTableReady<T> where T is your main viewmodel.
+```
+    public interface IProductManager
+    {
+        Task<DataTableReady<ProductViewModel>> GetProductsAsync(DataTableBody body);
+    }
+    public class ProductManager : IProductManager
+    {
+        private readonly ApplicationDbContext _db;
+        public ProductManager(ApplicationDbContext db)
+        {
+            _db = db;
+        }
+        public async Task<DataTableReady<ProductViewModel>> GetProductsAsync(DataTableBody body)
+        {
+            var query = CreateFilterAndSort(body.Search, body.Order);
+            var filteredCount = await query.CountAsync();
+            var totalCount = await _db.Products.CountAsync();
+            query = query.Skip(body.Start).Take(body.Length);
+            return new DataTableReady<ProductViewModel>
+            {
+                Draw = body.Draw,
+                RecordsFiltered = filteredCount,
+                RecordsTotal = totalCount,
+
+                Data =await query.Select(c => new ProductViewModel()
+                {
+                    Id = c.Id,
+                    Name = c.Name
+                }).ToListAsync()
+            };
+        }
+        private IQueryable<Product> CreateFilterAndSort(Search search,List<Order> order)
+        {
+           var query =  _db.Products
+                .Where(c => search == null || string.IsNullOrEmpty(search.Value) || c.Name == search.Value);
+            return query;
+        }
+```
+### 9- Creating a sample controller capable of returning a page and searching.
+```
+using System.Linq;
+using System.Threading.Tasks;
+using DynamicDataTable.Services;
+using DynamicDataTable.ViewModels.Datatable;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.Extensions.Logging;
+
+using Nahang.Admin.ViewModel;
+
+
+namespace DynamicDataTable.Controllers
+{
+    public class ProductsController : Controller
+    {
+        private readonly IDataTableHelper _dataTableHelper;
+        private readonly IProductManager _productManager;
+
+        public ProductsController(IDataTableHelper dataTableHelper, IProductManager productManager)
+        {
+            _dataTableHelper = dataTableHelper;
+            _productManager = productManager;
+
+        }
+        [HttpGet]
+        public IActionResult Index()
+        {
+            var datatableModel = _dataTableHelper.
+                Initiate(Url.ActionLink("Search", "Products", null))
+                .GetFeilds(typeof(ProductViewModel))
+                .AddExtraHeader("Actions")
+                .CreateDataTable();
+            return View(datatableModel);
+        }
+        [HttpPost]
+        public async Task<JsonResult> Search(DataTableBody body)
+        {
+            return Json(await _productManager.GetProductsAsync(body));
+        }
+
+    }
+}
+
+```
+### 10 - Index Views:
+```
+@model DynamicDataTable.ViewModels.Datatable.DatatableModel 
+@(await Html.PartialAsync("_DataTableHtml",Model))
+
+@section Scripts{
+<script>
+    var columnDefs = [];
+    columnDefs.push({
+        targets: 4,
+        data: "id",
+        render: function (data, type, row, meta) {
+            return `
+            <a data-toggle="tooltip" title="Remove" class="btn btn-danger deletezone"><i class="fa fa-trash"></i></a>`;
+        }
+    });
+</script>
+@(await Html.PartialAsync("_DataTableScript",Model))
+}
+
+```
+## Warning :
+in the index view, declaring the columnDefs is mandatory but adding customized buttons is optional.
 
