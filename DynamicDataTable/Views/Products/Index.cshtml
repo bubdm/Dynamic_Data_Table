@@ -1,0 +1,18 @@
+﻿
+@model DynamicDataTable.ViewModels.Datatable.DatatableModel 
+@(await Html.PartialAsync("_DataTableHtml",Model))
+
+@section Scripts{
+<script>
+    var columnDefs = [];
+    columnDefs.push({
+        targets: 4,
+        data: "id",
+        render: function (data, type, row, meta) {
+            return `
+            <a data-toggle="tooltip" title="Remove" class="btn btn-danger deletezone"><i class="fa fa-trash"></i></a>`;
+        }
+    });
+</script>
+@(await Html.PartialAsync("_DataTableScript",Model))
+}

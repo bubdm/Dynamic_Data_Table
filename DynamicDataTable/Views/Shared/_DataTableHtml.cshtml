@@ -1,0 +1,16 @@
+﻿
+@{
+    Layout = null;
+}
+@model DynamicDataTable.ViewModels.Datatable.DatatableModel
+<table class="table table-bordered " id="productTable">
+        <thead>
+            <tr>
+                @foreach(var item in Model.Headers)
+                {
+                    <th>@item</th>
+                }
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>

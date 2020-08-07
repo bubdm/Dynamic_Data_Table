@@ -1,0 +1,56 @@
+﻿
+@{
+    Layout = null;
+}
+@model DynamicDataTable.ViewModels.Datatable.DatatableModel
+<script>
+    var columns = @(Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.StringColumns)));
+    var targetcount = columns.length-1;
+    var checkboxes = @(Html.Raw(Newtonsoft.Json.JsonConvert.SerializeObject(Model.CheckBoxes)))
+    $.each(checkboxes, function (index, item) {
+        targetcount++
+        if (item.WhenTrue !== null) {
+            columnDefs.push({
+                targets: targetcount,
+                data: item.Title,
+                render: function (data, type, row, meta) {
+
+                    return `${(data ? item.WhenTrue : item.WhenFalse)}`;
+                }
+            });
+        }
+        else {
+            columnDefs.push({
+                targets: targetcount,
+                data: item.Title,
+                render: function (data, type, row, meta) {
+
+                    var checked = data ? 'checked="checked"' : ""
+                    return `<input ${checked}  type="checkbox">`
+                }
+            });
+        }
+
+        });
+</script>
+<link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/v/bs4/dt-1.10.21/datatables.min.css" />
+<script type="text/javascript" src="https://cdn.datatables.net/v/bs4/dt-1.10.21/datatables.min.js"></script>
+<script>
+    $(function () {
+            var table = $('#productTable').DataTable({
+                "ordering": true,
+                "pageLength": @Model.PageSize,
+                "bLengthChange": false,
+    proccessing: true,
+    serverSide: true,
+
+    ajax: {
+        url:"@Model.SearchEndPoint",
+        type: 'POST'
+                },
+                columns: columns,
+      columnDefs: columnDefs
+});
+        });
+
+</script>
